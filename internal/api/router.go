@@ -3,6 +3,7 @@ package api
 import (
 	"dp-portal-acl/internal/model"
 	"strings"
+	"time"
 
 	"dp-portal-acl/config"
 
@@ -10,6 +11,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/helmet"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/golang-jwt/jwt/v5"
+
+	jwtware "github.com/gofiber/contrib/jwt"
 )
 
 type Router struct {
@@ -25,8 +29,8 @@ func NewRouter(model *model.Model, config *config.Config) *Router {
 }
 
 func (r *Router) registerACLRouter(aclRouter fiber.Router) {
-	aclRouter.Post("/", r.CreateACL)
-	aclRouter.Get("/list", r.GetAclList)
+	aclRouter.Post("/", r.CreateACL).Name(CreateACLAction.String())
+	aclRouter.Get("/list", r.GetAclList).Name(ListACLAction.String())
 }
 
 func (r *Router) Authentication(c *fiber.Ctx) error {
@@ -54,13 +58,53 @@ func (r *Router) Start(addr string) {
 		Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
 	}))
 
-	app.Use(r.Authentication)
+	app.Get("/auth/token", func(c *fiber.Ctx) error {
+		secret := c.Query("secret_key", "")
+		if secret == "" {
+			return fiber.ErrBadRequest
+		}
+		claims := jwt.MapClaims{
+			"permission": []string{CreateACLAction.String(), ListACLAction.String()},
+			"exp":        time.Now().Add(time.Hour * 24 * 30).Unix(),
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	// app.Use(auth.Authentication
+		// Generate encoded token and send it as response.
+		t, err := token.SignedString([]byte(secret))
+		if err != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.JSON(fiber.Map{
+			"token": t,
+		})
+	})
+
+	app.Use(jwtware.New(jwtware.Config{
+		SigningKey: jwtware.SigningKey{Key: []byte("secret")},
+		SuccessHandler: func(c *fiber.Ctx) error {
+			user := c.Locals("user").(*jwt.Token)
+			claims := user.Claims.(jwt.MapClaims)
+
+			permission := claims["permission"].([]interface{})
+			next := c.Next()
+
+			currentAction := c.Route().Name
+			hasPermission := false
+			for _, action := range permission {
+				if currentAction == action.(string) {
+					hasPermission = true
+				}
+			}
+			if !hasPermission {
+				return jwt.ErrTokenMalformed
+			}
+			return next
+		},
+	}))
 
 	api := app.Group("/api")
 	aclRouter := api.Group("/acl")
-	r.registerACLRouter(aclRouter)
 
+	r.registerACLRouter(aclRouter)
 	app.Listen(addr)
 }
