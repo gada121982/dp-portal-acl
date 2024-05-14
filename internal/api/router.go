@@ -65,7 +65,7 @@ func (r *Router) Start(addr string) {
 		}
 		claims := jwt.MapClaims{
 			"permission": []string{CreateACLAction.String(), ListACLAction.String()},
-			"exp":        time.Now().Add(time.Hour * 24 * 30).Unix(),
+			"exp":        time.Now().Add(time.Hour * 24 * time.Duration(r.config.ServerConfig.TokenExpireDay)).Unix(),
 		}
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 

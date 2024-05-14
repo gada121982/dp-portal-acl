@@ -6,9 +6,10 @@ import (
 )
 
 type ServerConfig struct {
-	IpAddr    string `env:"IP_ADDR"`
-	Port      int    `env:"PORT"`
-	SecretKey string `env:"SECRET_KEY"`
+	IpAddr         string `env:"IP_ADDR"`
+	Port           int    `env:"PORT"`
+	SecretKey      string `env:"SECRET_KEY"`
+	TokenExpireDay int    `env:"TOKEN_EXPIRE_DAY"`
 }
 
 type MongoConfig struct {
